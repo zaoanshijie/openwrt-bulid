@@ -1,0 +1,125 @@
+name: Build x86_64
+
+on:
+  workflow_dispatch:
+    inputs:
+      WRT_THEME:
+        description: "默认主题"
+        type: choice
+        options:
+          - "bootstrap"
+          - "argon"
+        required: true
+        default: "argon"
+      WRT_NAME:
+        description: "主机名称"
+        required: true
+        type: string
+        default: "IWRT"
+      WRT_WIFI:
+        description: "Wifi名称"
+        required: true
+        type: string
+        default: "IAmWifi"
+      WRT_IP:
+        description: "默认访问IP"
+        required: true
+        type: string
+        default: "192.168.15.1"
+      WRT_REPOSITORY:
+        description: "要编译的仓库"
+        type: choice
+        options:
+          - "coolsnowwolf/lede"
+          - "openwrt/openwrt"
+        required: true
+        default: "coolsnowwolf/lede"
+env:
+  GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+  WRT_THEME: ${{inputs.WRT_THEME}}
+  WRT_NAME: ${{inputs.WRT_NAME}}
+  WRT_WIFI: ${{inputs.WRT_WIFI}}
+  WRT_IP: ${{inputs.WRT_IP}}
+  WRT_REPOSITORY: ${{ inputs.WRT_REPOSITORY }}
+  WRT_URL: https://github.com/${{ inputs.WRT_REPOSITORY }}
+  TZ: Asia/Shanghai
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: 检查服务器性能
+        run: |
+          echo "警告⚠"
+          echo "分配的服务器性能有限，若选择的插件过多，务必注意CPU性能！"
+          echo -e "已知CPU型号(降序): 7763，8370C，8272CL，8171M，E5-2673\n"
+          echo "--------------------------CPU信息--------------------------"
+          echo "CPU物理数量: $(cat /proc/cpuinfo | grep "physical id" | sort | uniq | wc -l)"
+          echo "CPU核心数量: $(nproc)"
+          echo -e "CPU型号信息:$(cat /proc/cpuinfo | grep -m1 name | awk -F: '{print $2}')\n"
+          echo "--------------------------内存信息--------------------------"
+          echo "已安装内存详细信息:"
+          echo -e "$(sudo lshw -short -C memory | grep GiB)\n"
+          echo "--------------------------硬盘信息--------------------------"
+          echo "硬盘数量: $(ls /dev/sd* | grep -v [1-9] | wc -l)" && df -hT
+
+      - name: 将存储库签出到运行器
+        uses: actions/checkout@v4
+
+      - name: 初始化环境
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          chmod 744 $GITHUB_WORKSPACE/scripts/init_env.sh
+          $GITHUB_WORKSPACE/scripts/init_env.sh
+
+      - name: 编译openwrt
+        if: ${{ env.WRT_REPOSITORY }} == 'openwrt/openwrt'
+        id: compile_openwrt
+        run: |
+          df -hT $PWD
+          LOG_DATE=$(date +'%Y-%m-%d %H%M')
+          echo "LOG_DATE=${LOG_DATE}" >> $GITHUB_ENV
+          chmod 744 $GITHUB_WORKSPACE/openwrt/build.sh
+          $GITHUB_WORKSPACE/openwrt/build.sh 2>&1 | tee build_${LOG_DATE}.log
+          cp -r $GITHUB_WORKSPACE/openwrt/build/bin $GITHUB_WORKSPACE/out
+          useVersionInfo=$(git show -s --date=short --format="Author: %an<br/>date: %cd<br/>commit: %s<br/>commit hash: %H<br/>")
+          echo "useVersionInfo=$useVersionInfo" >>$GITHUB_ENV
+          echo "LAST_SHORT_HASH=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "REPOSITORY=openwrt" >>  $GITHUB_ENV
+          echo "DEVICE_NAME=x86_64" >>  $GITHUB_ENV
+          echo "FILE_DATE=_$(date +'%Y-%m-%d %H%M')" >> $GITHUB_ENV
+
+      - name: 编译lede
+        if: ${{ env.WRT_REPOSITORY }} == 'coolsnowwolf/lede'
+        id: compile_lede
+        run: |
+          df -hT $PWD
+          LOG_DATE=$(date +'%Y-%m-%d %H%M')
+          echo "LOG_DATE=${LOG_DATE}" >> $GITHUB_ENV
+          chmod 744 $GITHUB_WORKSPACE/lede/build.sh
+          $GITHUB_WORKSPACE/lede/build.sh 2>&1 | tee build_${LOG_DATE}.log
+          cp -r $GITHUB_WORKSPACE/lede/build/bin $GITHUB_WORKSPACE/out
+          useVersionInfo=$(git show -s --date=short --format="Author: %an<br/>date: %cd<br/>commit: %s<br/>commit hash: %H<br/>")
+          echo "useVersionInfo=$useVersionInfo" >>$GITHUB_ENV
+          echo "LAST_SHORT_HASH=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "REPOSITORY=lede" >>  $GITHUB_ENV
+          echo "DEVICE_NAME=x86_64" >>  $GITHUB_ENV
+          echo "FILE_DATE=_$(date +'%Y-%m-%d %H%M')" >> $GITHUB_ENV
+
+      - name: 上传bin
+        uses: actions/upload-artifact@main
+        if: steps.compile_openwrt.outputs.status == 'success' || steps.compile_lede.outputs.status == 'success'
+        with:
+          name: OpenWrt_bin_${{ env.REPOSITORY }}_${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          path: out
+
+      - name: Prepare release tag
+        id: release_tag
+        run: |
+          DATE_PREFIX=$(date +%y%m%d)
+          echo "::set-output name=date_prefix::${DATE_PREFIX}"
+
+      - name: Process Input
+        id: process
+        run: echo "::set-output name=model_name::$(echo ${{ github.event.inputs.my-input }} | tr '_' '-')"

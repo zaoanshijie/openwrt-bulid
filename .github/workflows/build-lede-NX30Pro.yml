@@ -5,6 +5,14 @@ on:
     - cron: "0 8 * * *"
   repository_dispatch:
   workflow_dispatch:
+    inputs:
+      my-input:
+        description: "Select a device"
+        type: choice
+        options:
+          - "h3c_nx30pro"
+        required: true
+        default: "h3c_nx30pro"
   watch:
     types: [started]
 
@@ -19,10 +27,25 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
         uses: actions/checkout@main
+
+      - name: Check Server Performance
+        run: |
+          echo "警告⚠"
+          echo "分配的服务器性能有限，若选择的插件过多，务必注意CPU性能！"
+          echo -e "已知CPU型号(降序): 7763，8370C，8272CL，8171M，E5-2673\n"
+          echo "--------------------------CPU信息--------------------------"
+          echo "CPU物理数量: $(cat /proc/cpuinfo | grep "physical id" | sort | uniq | wc -l)"
+          echo "CPU核心数量: $(nproc)"
+          echo -e "CPU型号信息:$(cat /proc/cpuinfo | grep -m1 name | awk -F: '{print $2}')\n"
+          echo "--------------------------内存信息--------------------------"
+          echo "已安装内存详细信息:"
+          echo -e "$(sudo lshw -short -C memory | grep GiB)\n"
+          echo "--------------------------硬盘信息--------------------------"
+          echo "硬盘数量: $(ls /dev/sd* | grep -v [1-9] | wc -l)" && df -hT
 
       - name: Initialize the compilation environment [初始化环境]
         env:
@@ -31,23 +54,13 @@ jobs:
           docker rmi `docker images -q`
           sudo -E rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/apt/sources.list.d /usr/local/lib/android
           sudo -E apt-mark hold grub-efi-amd64-signed
-          sudo -E apt update
-          sudo -E apt -y purge azure-cli* docker* ghc* zulu* llvm* firefox google* dotnet* powershell* openjdk* mysql* php* mongodb* dotnet* moby* snap*
-          sudo -E apt -y full-upgrade
-          sudo -E apt -y install ack antlr3 aria2 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libreadline-dev libssl-dev libtool lrzsz mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip libpython3-dev qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
-          sudo -E systemctl daemon-reload
-          sudo -E apt -y autoremove --purge
-          sudo -E apt clean
-          sudo -E timedatectl set-timezone "$TZ"
+          sudo apt update -y
+          sudo apt full-upgrade -y
+          sudo apt install chrony sudo -y
+          sudo timedatectl set-timezone "$TZ"
+          sudo apt install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev libssl-dev libtool lrzsz mkisofs msmtp ninja-build p7zip p7zip-full patch pkgconf python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
           sudo mkdir -p /workdir
           sudo chown $USER:$GROUPS /workdir
-
-      - name: add 网易云解锁
-        run: |
-          wget https://github.com/UnblockNeteaseMusic/luci-app-unblockneteasemusic/archive/refs/heads/master.zip
-          unzip master.zip 
-          mv ./luci-app-unblockneteasemusic-master ./package/luci-app-unblockneteasemusic
-          echo done
 
       - name: Clone source code [克隆项目]
         working-directory: /workdir
@@ -60,31 +73,33 @@ jobs:
           echo "useVersionInfo=$useVersionInfo" >> $GITHUB_ENV
           echo "LAST_SHORT_HASH=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
+      - name: add 网易云解锁
+        run: |
+          cd lede
+          wget https://github.com/UnblockNeteaseMusic/luci-app-unblockneteasemusic/archive/refs/heads/master.zip
+          unzip master.zip 
+          mv ./luci-app-unblockneteasemusic-master ./package/luci-app-unblockneteasemusic
+
       - name: Update feeds [更新配置]
-        if: steps.checkNeed.outputs.status == 'success'
         run: cd lede && ./scripts/feeds update -a && ./scripts/feeds install -a
 
       - name: Modify default ip
-        if: steps.checkNeed.outputs.status == 'success'
         run: |
           cd lede
           sed -i 's/192.168.1.1/192.168.15.1/g' package/base-files/files/bin/config_generate
           sed -i "s/luci-theme-bootstrap/luci-theme-argon/g" $(find feeds/luci/collections/ -type f -name "Makefile")
 
       - name: Replace configuration file [替换.config文件]
-        if: steps.checkNeed.outputs.status == 'success'
         run: |
           cd lede
           rm -f ./.config*
-          cp ${GITHUB_WORKSPACE}/.config .
+          cp ${GITHUB_WORKSPACE}/config/nx30pro/.config .
 
       - name: Update feeds again
-        if: steps.checkNeed.outputs.status == 'success'
         run: cd lede && ./scripts/feeds update -a && ./scripts/feeds install -a
 
       - name: Download package [依赖处理]
         id: package
-        if: steps.checkNeed.outputs.status == 'success'
         run: |
           cd lede
           make download -j8
@@ -93,7 +108,6 @@ jobs:
 
       - name: Compile the firmware [进行编译]
         id: compile
-        if: steps.checkNeed.outputs.status == 'success'
         run: |
           cd lede
           echo -e "$(nproc) thread compile"
@@ -103,19 +117,19 @@ jobs:
           echo "FILE_DATE=_$(date +"%Y-%m-%d %H%M")" >> $GITHUB_ENV
 
       - name: Check space usage [检查磁盘状态]
-        if: steps.checkNeed.outputs.status == 'success' && (!cancelled())
+        if: (!cancelled())
         run: df -hT
 
       - name: Upload bin directory [上传bin]
         uses: actions/upload-artifact@main
-        if: steps.checkNeed.outputs.status == 'success' && steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
+        if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
         with:
           name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: lede/bin
 
       - name: Organize files[文件打包]
         id: organize
-        if: steps.checkNeed.outputs.status == 'success' && env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+        if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
         run: |
           cd $GITHUB_WORKSPACE/lede/bin/targets/*/*
           rm -rf packages
@@ -125,7 +139,6 @@ jobs:
           echo "::set-output name=release_tag::$(date +"%Y-%m-%d %H%M")"
 
       - name: Calculate MD5 [计算MD5]
-        if: steps.checkNeed.outputs.status == 'success'
         run: |
           cd ${{ env.FIRMWARE }} && rm -rf sha256sums
           MD5=$(md5sum * | awk '{ print $2 " " $1 }' | sed ':a;N;$!ba;s/\n/<br>/g')
@@ -133,23 +146,13 @@ jobs:
 
       - name: Upload firmware directory [上传固件]
         uses: actions/upload-artifact@main
-        if: steps.checkNeed.outputs.status == 'success' && steps.organize.outputs.status == 'success' && !cancelled()
+        if: steps.organize.outputs.status == 'success' && !cancelled()
         with:
           name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: ${{ env.FIRMWARE }}
 
-      # - name: Send File to Telegram
-      #   uses: appleboy/telegram-action@master
-      #   if: steps.checkNeed.outputs.status == 'success'
-      #   with:
-      #     to: ${{ secrets.TELEGRAM_CHAT_ID }}
-      #     token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-      #     message: "File"
-      #     document: ${{ env.FIRMWARE }}/*
-
       - name: Prepare release tag
         id: release_tag
-        if: steps.checkNeed.outputs.status == 'success'
         run: |
           DATE_PREFIX=$(date +%y%m%d)
           echo "::set-output name=date_prefix::${DATE_PREFIX}"

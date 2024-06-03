@@ -1,0 +1,20 @@
+名称 lede_video.mk
+分支 master
+来源 coolsnowwolf/lede/package/kernel/linux/modules/video.mk
+获取日期 20240605
+
+
+名称 lede_target
+分支 master
+来源 coolsnowwolf/lede/target/linux/generic/hack-5.15
+获取日期 20240605
+
+名称 lede_mt76_patches/0001-mt76-allow-VHT-rate-on-2.4GHz.patch
+分支 master
+来源 coolsnowwolf/lede/package/kernel/mt76/patches/0001-mt76-allow-VHT-rate-on-2.4GHz.patch
+获取日期 20240605
+
+名称 openwrt_master_libpfring
+分支 master
+来源 openwrt/packages/libs/libpfring
+获取日期 20240605
