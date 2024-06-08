@@ -62,6 +62,10 @@ sed -i "s/${github_addr}/${GITHUB_MIRROR}/g" $(grep ${github_addr} --exclude-dir
 # 当前的提交记录ID
 WRT_COMMIT_ID="$(git rev-parse HEAD)"
 
+echo "首次更新 feeds"
+./scripts/feeds update -a
+# ./scripts/feeds install -a
+
 echo "默认参数更改"
 #修改默认主题
 sed -i "s/luci-theme-bootstrap/luci-theme-$WRT_THEME/g" $(find ./feeds/luci/collections/ -type f -name "Makefile")
@@ -86,7 +90,7 @@ sed -i "s/ssid=.*/ssid=$WRT_WIFI/g" ./package/kernel/mac80211/files/lib/wifi/mac
 # wifi 手动启用吧
 # sed -i "/wireless.\${name}.disabled/d" package/kernel/mac80211/files/lib/wifi/mac80211.sh || sed -i "/wireless.\${name}.disabled/d" package/network/config/wifi-scripts/files/lib/wifi/mac80211.sh
 
-echo "更新 feeds"
+echo "更改参数后更新 feeds"
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 
