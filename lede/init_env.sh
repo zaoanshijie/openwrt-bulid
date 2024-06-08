@@ -19,5 +19,5 @@ sudo apt-get install -y ack antlr3 asciidoc autoconf \
 
 sudo apt-get clean
 sudo apt-get autoclean --purge
-rm -rf /var/lib/apt/lists/*
+sudo rm -rf /var/lib/apt/lists/*
 sudo timedatectl set-timezone "$TZ"
