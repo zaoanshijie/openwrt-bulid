@@ -66,52 +66,25 @@ jobs:
       - name: 将存储库签出到运行器
         uses: actions/checkout@v4
 
-      - name: 初始化环境
-        env:
-          DEBIAN_FRONTEND: noninteractive
-        run: |
-          chmod 744 $GITHUB_WORKSPACE/scripts/init_env.sh
-          $GITHUB_WORKSPACE/scripts/init_env.sh
+      - name: 初始化运行环境
+        run: source $GITHUB_WORKSPACE/scripts/init_env.sh
 
-      - name: 编译openwrt
-        if: ${{ env.WRT_REPOSITORY }} == 'openwrt/openwrt'
-        id: compile_openwrt
-        run: |
-          df -hT $PWD
-          LOG_DATE=$(date +'%Y-%m-%d %H%M')
-          echo "LOG_DATE=${LOG_DATE}" >> $GITHUB_ENV
-          chmod 744 $GITHUB_WORKSPACE/openwrt/build.sh
-          $GITHUB_WORKSPACE/openwrt/build.sh 2>&1 | tee build_${LOG_DATE}.log
-          cp -r $GITHUB_WORKSPACE/openwrt/build/bin $GITHUB_WORKSPACE/out
-          useVersionInfo=$(git show -s --date=short --format="Author: %an<br/>date: %cd<br/>commit: %s<br/>commit hash: %H<br/>")
-          echo "useVersionInfo=$useVersionInfo" >>$GITHUB_ENV
-          echo "LAST_SHORT_HASH=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-          echo "REPOSITORY=openwrt" >>  $GITHUB_ENV
-          echo "DEVICE_NAME=x86_64" >>  $GITHUB_ENV
-          echo "FILE_DATE=_$(date +'%Y-%m-%d %H%M')" >> $GITHUB_ENV
+      - name: 初始化编译环境
+        run: /bin/bash $GITHUB_WORKSPACE/$BUILD_DIR/init_env.sh
 
-      - name: 编译lede
-        if: ${{ env.WRT_REPOSITORY }} == 'coolsnowwolf/lede'
-        id: compile_lede
+      - name: 编译
+        id: compile
         run: |
-          df -hT $PWD
-          LOG_DATE=$(date +'%Y-%m-%d %H%M')
-          echo "LOG_DATE=${LOG_DATE}" >> $GITHUB_ENV
-          chmod 744 $GITHUB_WORKSPACE/lede/build.sh
-          $GITHUB_WORKSPACE/lede/build.sh 2>&1 | tee build_${LOG_DATE}.log
-          cp -r $GITHUB_WORKSPACE/lede/build/bin $GITHUB_WORKSPACE/out
-          useVersionInfo=$(git show -s --date=short --format="Author: %an<br/>date: %cd<br/>commit: %s<br/>commit hash: %H<br/>")
-          echo "useVersionInfo=$useVersionInfo" >>$GITHUB_ENV
-          echo "LAST_SHORT_HASH=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-          echo "REPOSITORY=lede" >>  $GITHUB_ENV
-          echo "DEVICE_NAME=x86_64" >>  $GITHUB_ENV
-          echo "FILE_DATE=_$(date +'%Y-%m-%d %H%M')" >> $GITHUB_ENV
+          df -hT
+          /bin/bash $GITHUB_WORKSPACE/$BUILD_DIR/build.sh
+          cp -r $GITHUB_WORKSPACE/$BUILD_DIR/build/bin $GITHUB_WORKSPACE/out
+          echo "FILE_DATE=$(date +'%Y-%m-%d %H%M')" >> $GITHUB_ENV
 
       - name: 上传bin
         uses: actions/upload-artifact@main
-        if: steps.compile_openwrt.outputs.status == 'success' || steps.compile_lede.outputs.status == 'success'
+        if: steps.compile.outputs.status == 'success'
         with:
-          name: OpenWrt_bin_${{ env.REPOSITORY }}_${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          name: OpenWrt_bin_${{ env.REPOSITORY }}_${{ env.DEVICE_NAME }}_${{ env.FILE_DATE }}
           path: out
 
       - name: Prepare release tag
@@ -122,4 +95,4 @@ jobs:
 
       - name: Process Input
         id: process
-        run: echo "::set-output name=model_name::$(echo ${{ github.event.inputs.my-input }} | tr '_' '-')"
+        run: echo "::set-output name=model_name::$(echo ${{ github.event.inputs.WRT_REPOSITORY }} | tr '_' '-')"
