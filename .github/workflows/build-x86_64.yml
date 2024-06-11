@@ -79,6 +79,7 @@ jobs:
           /bin/bash $GITHUB_WORKSPACE/$BUILD_DIR/build.sh
           cp -r $GITHUB_WORKSPACE/$BUILD_DIR/build/bin $GITHUB_WORKSPACE/out
           echo "FILE_DATE=$(date +'%Y-%m-%d %H%M')" >> $GITHUB_ENV
+          tree $GITHUB_WORKSPACE/out
 
       - name: 上传bin
         uses: actions/upload-artifact@main
