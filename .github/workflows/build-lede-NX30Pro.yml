@@ -1,8 +1,8 @@
 name: Build lede
 
 on:
-  schedule:
-    - cron: "0 8 * * *"
+  # schedule:
+  # - cron: "0 8 * * *"
   repository_dispatch:
   workflow_dispatch:
     inputs:
